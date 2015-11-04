@@ -1,32 +1,37 @@
-from flask import Flask, render_template, url_for, redirect, request, flash, jsonify
+from flask import Flask, render_template, request, redirect,jsonify, url_for, flash
 app = Flask(__name__)
 
-# import CRUD Operations
-from database_setup import Base, Restaurant, MenuItem
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, asc
 from sqlalchemy.orm import sessionmaker
+from database_setup import Base, Restaurant, MenuItem
 
-# Create session and connect to DB
+
+#Connect to Database and create database session
 engine = create_engine('sqlite:///restaurantmenu.db')
 Base.metadata.bind = engine
+
 DBSession = sessionmaker(bind=engine)
 session = DBSession()
 
-#JSON APIs to view Restaurant Information
-@app.route('/restaurants/JSON')
-def restaurantJSON():
-    restaurants = session.query(Restaurant).all()
-    return jsonify(restaurant=[i.serialize for i in restaurants])
 
-@app.route('/restaurants/<int:restaurant_id>/menu/JSON')
+#JSON APIs to view Restaurant Information
+@app.route('/restaurant/<int:restaurant_id>/menu/JSON')
 def restaurantMenuJSON(restaurant_id):
+    restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
     items = session.query(MenuItem).filter_by(restaurant_id = restaurant_id).all()
     return jsonify(MenuItems=[i.serialize for i in items])
 
-@app.route('/restaurants/<int:restaurant_id>/menu/<int:menu_id>/JSON')
-def restaurantMenuItemJSON(restaurant_id,menu_id):
-    item = session.query(MenuItem).filter_by(id = menu_id).one()
-    return jsonify(MenuItem=item.serialize)
+
+@app.route('/restaurant/<int:restaurant_id>/menu/<int:menu_id>/JSON')
+def menuItemJSON(restaurant_id, menu_id):
+    Menu_Item = session.query(MenuItem).filter_by(id = menu_id).one()
+    return jsonify(Menu_Item = Menu_Item.serialize)
+
+@app.route('/restaurant/JSON')
+def restaurantsJSON():
+    restaurants = session.query(Restaurant).all()
+    return jsonify(restaurants= [r.serialize for r in restaurants])
+
 
 #Show all restaurants
 @app.route('/')
@@ -59,6 +64,7 @@ def editRestaurant(restaurant_id):
   else:
     return render_template('editRestaurant.html', restaurant = editedRestaurant)
 
+
 #Delete a restaurant
 @app.route('/restaurant/<int:restaurant_id>/delete/', methods = ['GET','POST'])
 def deleteRestaurant(restaurant_id):
@@ -78,24 +84,28 @@ def showMenu(restaurant_id):
     restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
     items = session.query(MenuItem).filter_by(restaurant_id = restaurant_id).all()
     return render_template('menu.html', items = items, restaurant = restaurant)
+     
+
 
 #Create a new menu item
-@app.route('/restaurants/<int:restaurant_id>/new', methods=['GET','POST'])
+@app.route('/restaurant/<int:restaurant_id>/menu/new/',methods=['GET','POST'])
 def newMenuItem(restaurant_id):
-    if request.method == 'POST':
-        newItem = MenuItem(name=request.form['name'], restaurant_id=restaurant_id)
-        session.add(newItem)
-        session.commit()
-        flash("new menu item created!")
-        return redirect(url_for('restaurantMenu', restaurant_id=restaurant_id))
-    else:
-        return render_template('newmenuitem.html', restaurant_id=restaurant_id)
+  restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
+  if request.method == 'POST':
+      newItem = MenuItem(name = request.form['name'], description = request.form['description'], price = request.form['price'], course = request.form['course'], restaurant_id = restaurant_id)
+      session.add(newItem)
+      session.commit()
+      flash('New Menu %s Item Successfully Created' % (newItem.name))
+      return redirect(url_for('showMenu', restaurant_id = restaurant_id))
+  else:
+      return render_template('newmenuitem.html', restaurant_id = restaurant_id)
 
 #Edit a menu item
-@app.route('/restaurants/<int:restaurant_id>/<int:menu_id>/edit', methods=['GET','POST'])
+@app.route('/restaurant/<int:restaurant_id>/menu/<int:menu_id>/edit', methods=['GET','POST'])
 def editMenuItem(restaurant_id, menu_id):
-    editedItem = session.query(MenuItem).filter_by(id=menu_id).one()
-    oldname = editedItem.name
+
+    editedItem = session.query(MenuItem).filter_by(id = menu_id).one()
+    restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
     if request.method == 'POST':
         if request.form['name']:
             editedItem.name = request.form['name']
@@ -110,24 +120,26 @@ def editMenuItem(restaurant_id, menu_id):
         flash('Menu Item Successfully Edited')
         return redirect(url_for('showMenu', restaurant_id = restaurant_id))
     else:
-        return render_template(
-            'editmenuitem.html', restaurant_id=restaurant_id, menu_id=menu_id, item=editedItem)
+        return render_template('editmenuitem.html', restaurant_id = restaurant_id, menu_id = menu_id, item = editedItem)
+
 
 #Delete a menu item
-@app.route('/restaurants/<int:restaurant_id>/<int:menu_id>/delete', methods = ['GET','POST'])
-def deleteMenuItem(restaurant_id, menu_id):
-    deletedItem = session.query(MenuItem).filter_by(id=menu_id).one()
-    oldname = deletedItem.name
+@app.route('/restaurant/<int:restaurant_id>/menu/<int:menu_id>/delete', methods = ['GET','POST'])
+def deleteMenuItem(restaurant_id,menu_id):
+    restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
+    itemToDelete = session.query(MenuItem).filter_by(id = menu_id).one() 
     if request.method == 'POST':
-        session.delete(deletedItem)
+        session.delete(itemToDelete)
         session.commit()
-        flash("deleted the menu item %s" % oldname)
-        return redirect(url_for('showMenu', restaurant_id=restaurant_id))
+        flash('Menu Item Successfully Deleted')
+        return redirect(url_for('showMenu', restaurant_id = restaurant_id))
     else:
-        return render_template(
-            'deleteditem.html', item=deletedItem)
+        return render_template('deleteMenuItem.html', item = itemToDelete)
+
+
+
 
 if __name__ == '__main__':
-    app.secret_key = 'super_secret_key'
-    app.debug = True
-    app.run(host = '0.0.0.0', port = 5000)
+  app.secret_key = 'super_secret_key'
+  app.debug = True
+  app.run(host = '0.0.0.0', port = 5000)
